@@ -113,16 +113,21 @@ namespace PushSharp.Apple
             // Pause the timer
             timerBatchWait.Change (Timeout.Infinite, Timeout.Infinite);
 
-            if (notifications.Count <= 0)
-                return;
+			List<CompletableApnsNotification> toSend;
+			lock ( notificationBatchQueueLock )
+			{
+				if ( notifications.Count <= 0 )
+					return;
 
-            // Let's store the batch items to send internally
-            var toSend = new List<CompletableApnsNotification> ();
+				// Let's store the batch items to send internally
+				toSend = new List<CompletableApnsNotification>();
 
-            while (notifications.Count > 0 && toSend.Count < Configuration.InternalBatchSize) {
-                var n = notifications.Dequeue ();
-                toSend.Add (n);
-            }
+				while ( notifications.Count > 0 && toSend.Count < Configuration.InternalBatchSize )
+				{
+					var n = notifications.Dequeue();
+					toSend.Add( n );
+				}
+			}
 
 
             Log.Info ("APNS-Client[{0}]: Sending Batch ID={1}, Count={2}", id, batchId, toSend.Count);
@@ -283,11 +288,14 @@ namespace PushSharp.Apple
             // Now remove the failed notification from the sent list
             sent.RemoveAt (0);
 
-            // The remaining items in the list were sent after the failed notification
-            // we can assume these were ignored by apple so we need to send them again
-            // Requeue the remaining notifications
-            foreach (var s in sent)
-                notifications.Enqueue (s.Notification);
+			// The remaining items in the list were sent after the failed notification
+			// we can assume these were ignored by apple so we need to send them again
+			// Requeue the remaining notifications
+			lock ( notificationBatchQueueLock )
+			{
+				foreach ( var s in sent )
+					notifications.Enqueue( s.Notification );
+			}
 
             // Clear our sent list
             sent.Clear ();
